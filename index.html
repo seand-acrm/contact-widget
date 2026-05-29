@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Client Profile</title>
 
+  <!-- Zoho JS SDK — loaded first so ZOHO is defined before the mock guard runs -->
+  <script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
+
   <style>
     /* ═══════════════════════════════════════════════════
        DESIGN TOKENS
@@ -599,10 +602,13 @@ function reveal() {
 }
 
 // ── SDK Mock (dev/preview mode) ───────────────────────────────────────────
+// Waits briefly to allow the real Zoho SDK script to execute fully.
+// If ZOHO is still undefined after the wait, we're in local/preview mode.
 (function () {
-  if (typeof ZOHO !== 'undefined') return;
+  function initMockIfNeeded() {
+    if (typeof ZOHO !== 'undefined' && typeof ZOHO.embeddedApp !== 'undefined') return;
 
-  const MOCK = {
+    const MOCK = {
     contact: {
       id: 'demo-001', First_Name: 'Margaret', Last_Name: 'Thornton',
       Full_Name: 'Margaret Thornton', Title: 'Chief Financial Officer',
@@ -659,7 +665,10 @@ function reveal() {
     }
   };
 
-  document.getElementById('mock-badge').style.display = 'block';
+    document.getElementById('mock-badge').style.display = 'block';
+  }
+  // Give the SDK script 300ms to load; if still missing, activate mock
+  setTimeout(initMockIfNeeded, 300);
 })();
 
 // ── State ─────────────────────────────────────────────────────────────────
@@ -667,14 +676,24 @@ let ENTITY_ID = null;
 let CONTACT   = {};
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────
-ZOHO.embeddedApp.on('PageLoad', function (data) {
-  ENTITY_ID = data.EntityId;
-  Promise.all([loadContact(), loadDeals()])
-    .catch(err => { console.error(err); showError('Some data could not be loaded. Please refresh.'); })
-    .finally(() => reveal());
-});
+// Deferred so the SDK script (real or mock) has time to fully initialise
+// before we call ZOHO.embeddedApp.on / .init
+function startApp() {
+  ZOHO.embeddedApp.on('PageLoad', function (data) {
+    ENTITY_ID = data.EntityId;
+    Promise.all([loadContact(), loadDeals()])
+      .catch(err => { console.error(err); showError('Some data could not be loaded. Please refresh.'); })
+      .finally(() => reveal());
+  });
+  ZOHO.embeddedApp.init();
+}
 
-ZOHO.embeddedApp.init();
+// Wait for DOM + SDK to be ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function () { setTimeout(startApp, 350); });
+} else {
+  setTimeout(startApp, 350);
+}
 
 // ── Load Contact ───────────────────────────────────────────────────────────
 async function loadContact() {
